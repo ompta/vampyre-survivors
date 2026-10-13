@@ -1,0 +1,21 @@
+﻿  if(player.ups.orbit>0){
+    const p=WEAPONS.orbit(player.ups.orbit);
+    player.orbitA+=p.speed*dt;
+    for(let i=0;i<p.blades;i++){
+      const a=player.orbitA+i*TAU/p.blades;
+      const bx=player.x+Math.cos(a)*p.radius, by=player.y+Math.sin(a)*p.radius;
+      for(const e of enemies){
+        if(S.time-e.lastOrbit>.55 && dist2(bx,by,e.x,e.y)<=(12+e.r)**2){
+          e.lastOrbit=S.time;
+          const aa=Math.atan2(e.y-player.y,e.x-player.x);
+          damageEnemy(e,p.dmg*dm,Math.cos(aa)*100,Math.sin(aa)*100);
+        }
+      }
+    }
+  }
+}
+function updateBullets(dt){
+  for(let i=bullets.length-1;i>=0;i--){
+    const b=bullets[i];
+    b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;
+    let dead=b.life<=0;

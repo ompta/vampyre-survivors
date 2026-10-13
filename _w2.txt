@@ -1,0 +1,138 @@
+﻿=== 259..341
+L259:   while(S.xp>=S.xpNeed){
+L260:     S.xp-=S.xpNeed; S.pendLevels++;
+L261:     S.xpNeed=Math.floor(8+S.level*3+S.level*S.level*.35);
+L262:   }
+L263:   if(S.pendLevels>0&&S.mode==="playing")openLevelUp();
+L264: }
+L265: function applyUpgrade(id){
+L266:   const u=UPGRADES[id],l=player.ups[id];
+L267:   player.ups[id]=l+1;
+L268:   if(id==="hp"){player.maxHp+=30;player.hp=Math.min(player.maxHp,player.hp+30);}
+L269:   else if(id==="spd")player.speed=220*1.15*(1+0.15*(l));
+L270:   else if(id==="magnet")player.magnet=80+80*(l+1);
+L271:   else if(id==="regen")player.regen=l+1;
+L272:   else if(id==="armor")player.armor=15*(l+1);
+L273:   buildWeaponChips();
+L274:   sfx("level");
+L275: }
+L276: /* ================= weapons ================= */
+L277: function nearestEnemies(x,y,range,limit){
+L278:   const r2=range*range,out=[];
+L279:   for(const e of enemies){const d=dist2(x,y,e.x,e.y);if(d<=r2)out.push([d,e]);}
+L280:   out.sort((a,b)=>a[0]-b[0]);
+L281:   return out.slice(0,limit).map(p=>p[1]);
+L282: }
+L283: function updateWeapons(dt){
+L284:   const rm=rateMult(),dm=dmgMult();
+L285:   if(player.ups.garlic>0){
+L286:     player.cds.garlic-=dt;
+L287:     if(player.cds.garlic<=0){
+L288:       const p=WEAPONS.garlic(player.ups.garlic);
+L289:       const targets=nearestEnemies(player.x,player.y,p.range,p.hits);
+L290:       if(targets.length){
+L291:         player.cds.garlic=p.cd/rm;
+L292:         for(const e of targets){
+L293:           const a=Math.atan2(e.y-player.y,e.x-player.x);
+L294:           slashes.push({x:player.x,y:player.y,angle:a,life:.22,max:.22,r:p.range*.62});
+L295:           damageEnemy(e,p.dmg*dm,Math.cos(a)*180,Math.sin(a)*180);
+L296:         }
+L297:         sfx("slash");
+L298:       } else player.cds.garlic=0;
+L299:     }
+L300:   }
+L301:   if(player.ups.bullet>0){
+L302:     player.cds.bullet-=dt;
+L303:     if(player.cds.bullet<=0){
+L304:       const p=WEAPONS.bullet(player.ups.bullet);
+L305:       const t=nearestEnemies(player.x,player.y,p.range,1)[0];
+L306:       if(t){
+L307:         player.cds.bullet=p.cd/rm;
+L308:         for(let i=0;i<p.count;i++){
+L309:           const a=Math.atan2(t.y-player.y,t.x-player.x)+(i-(p.count-1)/2)*.18;
+L310:           bullets.push({x:player.x,y:player.y,vx:Math.cos(a)*p.speed,vy:Math.sin(a)*p.speed,
+L311:             dmg:p.dmg*dm,pierce:p.pierce,life:1.4,r:5});
+L312:         }
+L313:         sfx("shoot");
+L314:       } else player.cds.bullet=0;
+L315:     }
+L316:   }
+L317:   if(player.ups.nova>0){
+L318:     player.cds.nova-=dt;
+L319:     if(player.cds.nova<=0){
+L320:       const p=WEAPONS.nova(player.ups.nova);
+L321:       const inR=enemies.filter(e=>dist2(player.x,player.y,e.x,e.y)<=(p.radius+e.r)**2);
+L322:       if(inR.length){
+L323:         player.cds.nova=p.cd/rm;
+L324:         rings.push({x:player.x,y:player.y,r:p.radius,life:.45,max:.45,color:"#9fe8ff"});
+L325:         for(const e of inR){
+L326:           const a=Math.atan2(e.y-player.y,e.x-player.x);
+L327:           damageEnemy(e,p.dmg*dm,Math.cos(a)*120,Math.sin(a)*120);
+L328:         }
+L329:         sfx("nova");
+L330:       } else player.cds.nova=0;
+L331:     }
+L332:   }
+L333:   if(player.ups.orbit>0){
+L334:     const p=WEAPONS.orbit(player.ups.orbit);
+L335:     player.orbitA+=p.speed*dt;
+L336:     for(let i=0;i<p.blades;i++){
+L337:       const a=player.orbitA+i*TAU/p.blades;
+L338:       const bx=player.x+Math.cos(a)*p.radius, by=player.y+Math.sin(a)*p.radius;
+L339:       for(const e of enemies){
+L340:         if(S.time-e.lastOrbit>.55 && dist2(bx,by,e.x,e.y)<=(12+e.r)**2){
+L341:           e.lastOrbit=S.time;
+=== 591..613
+L591:     ctx.shadowBlur=0;
+L592:   }
+L593:   ctx.globalAlpha=1;
+L594: }
+L595: /* ================= HUD & UI ================= */
+L596: function buildWeaponChips(){
+L597:   const box=$("weapons");box.innerHTML="";
+L598:   for(const id of ["garlic","bullet","nova","orbit"]){
+L599:     const lv=player.ups[id];
+L600:     const d=document.createElement("div");d.className="wchip";
+L601:     let pips="";for(let i=0;i<5;i++)pips+=`<div class="pip${i<lv?" on":""}"></div>`;
+L602:     d.innerHTML=`<div class="ic">${UPGRADES[id].icon}</div><div class="pips">${pips}</div>`;
+L603:     d.title=UPGRADES[id].name+" — "+(lv?UPGRADES[id].desc(lv):"not equipped");
+L604:     box.appendChild(d);
+L605:   }
+L606: }
+L607: function updateHud(){
+L608:   const pct=Math.max(0,player.hp/player.maxHp*100);
+L609:   $("hpbar").style.width=pct+"%";
+L610:   $("hpwrap").classList.toggle("low",pct<30);
+L611:   $("xpbar").style.width=Math.min(100,S.xp/S.xpNeed*100)+"%";
+L612:   $("levelbadge").textContent="LV "+S.level;
+L613:   const rem=WIN_TIME-S.time;
+=== 621..649
+L621:     $("bossfill").style.width=Math.max(0,S.bossRef.hp/S.bossRef.maxHp*100)+"%";
+L622:   } else bb.style.display="none";
+L623:   $("weapons").classList.toggle("show",S.mode==="paused");
+L624: }
+L625: function rollChoices(){
+L626:   const pool=[];
+L627:   for(const id in UPGRADES){
+L628:     const u=UPGRADES[id],lv=player.ups[id];
+L629:     if(lv<u.max)pool.push({id,w:u.base==="weapon"?3:2});
+L630:   }
+L631:   const out=[];
+L632:   while(out.length<3&&pool.length){
+L633:     const tot=pool.reduce((s,p)=>s+p.w,0);
+L634:     let r=Math.random()*tot;
+L635:     for(let i=0;i<pool.length;i++){
+L636:       r-=pool[i].w;
+L637:       if(r<=0){out.push(pool[i].id);pool.splice(i,1);break;}
+L638:     }
+L639:   }
+L640:   if(!out.length)out.push("heal");
+L641:   return out;
+L642: }
+L643: function openLevelUp(){
+L644:   S.mode="levelup";
+L645:   const box=$("lvlChoices");box.innerHTML="";
+L646:   const ids=S._choices=rollChoices();
+L647:   ids.forEach((id,i)=>{
+L648:     const u=id==="heal"?{name:"Blood Ritual",icon:"🩸",max:1,desc:()=>"Restore 40% HP"}:UPGRADES[id];
+L649:     const lv=player.ups[id]||0;
