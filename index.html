@@ -144,6 +144,7 @@ const UPGRADES = {
   nova:  {name:"Holy Nova",icon:"🕊️",max:5,base:"weapon",desc:l=>`Holy pulse around you. DMG ${8+5*l} · radius ${90+16*l}`},
   orbit: {name:"Orbiting Blades",icon:"🌀",max:5,base:"weapon",desc:l=>`${2+l} blades whirl around you. DMG ${9+5*l}`},
   storm: {name:"Storm of the Damned",icon:"🌩",max:5,base:"weapon",desc:l=>`Lightning strikes ${1+Math.floor((l-1)/2)} random foes. DMG ${12+7*l}`},
+  dart: {name:"Bone Darts",icon:"🦴",max:5,base:"weapon",desc:l=>`Hurls ${1+Math.floor((l-1)/2)} homing darts. DMG ${8+4*l}`},
   hp:    {name:"Vampyric Heart",icon:"❤️",max:3,desc:l=>`Max HP +30 (now ${100+30*(l+1)})`},
   spd:   {name:"Swiftness",icon:"👟",max:3,desc:l=>`Move speed +15%`},
   dmg:   {name:"Cursed Edge",icon:"🗡️",max:5,desc:l=>`All damage +20% (total +${20*(l+1)}%)`},
@@ -158,6 +159,7 @@ const WEAPONS = {
   nova:   l=>({cd:2.2,dmg:8+5*l, radius:90+16*l}),
   orbit:  l=>({blades:2+l, radius:70+9*l, dmg:9+5*l, speed:2.4}),
   storm:  l=>({cd:1.5,dmg:12+7*l, radius:140+14*l, hits:1+Math.floor((l-1)/2)}),
+  dart:   l=>({cd:.85,dmg:8+4*l, speed:260, count:1+Math.floor((l-1)/2), turn:6}),
 };
 const ENEMY_TYPES = {
   zombie:   {hp:30,  speed:55,  dmg:10, r:14, xp:1,  color:"#6a9b52", eye:"#38ff9a", score:10},
@@ -178,8 +180,8 @@ function newState(){
      bossIdx:0,bossRef:null,level:1,xp:0,xpNeed:8,pendLevels:0};
   player={x:0,y:0,hp:100,maxHp:100,speed:220,r:13,magnet:80,regen:0,armor:0,
           invuln:0,face:1,move:0,anim:0,
-          ups:{garlic:1,bullet:0,nova:0,orbit:0,storm:0,hp:0,spd:0,dmg:0,rate:0,magnet:0,regen:0,armor:0},
-          cds:{garlic:0,bullet:0,nova:0,orbit:0,storm:0},orbitA:0};
+          ups:{garlic:1,bullet:0,nova:0,orbit:0,storm:0,dart:0,hp:0,spd:0,dmg:0,rate:0,magnet:0,regen:0,armor:0},
+          cds:{garlic:0,bullet:0,nova:0,orbit:0,storm:0,dart:0},orbitA:0};
   cam={x:0,y:0};
   enemies=[];bullets=[];gems=[];parts=[];texts=[];rings=[];slashes=[];
 }
@@ -364,11 +366,39 @@ function updateWeapons(dt){
       } else player.cds.storm=0;
     }
   }
+  if(player.ups.dart>0){
+    const p=WEAPONS.dart(player.ups.dart);
+    player.cds.dart-=dt;
+    if(player.cds.dart<=0){
+      player.cds.dart=p.cd/rm;
+      for(let i=0;i<p.count;i++){
+        const a=S.time*1.3+i*TAU/p.count;
+        bullets.push({x:player.x,y:player.y,vx:Math.cos(a)*p.speed,vy:Math.sin(a)*p.speed,
+          dmg:p.dmg*dm,pierce:0,life:2.2,r:5,home:1,turn:p.turn,sc:"#d8cfa8",fc:"#efe6c8"});
+      }
+      sfx("shoot");
+    }
+  }
 }
 function updateBullets(dt){
   for(let i=bullets.length-1;i>=0;i--){
     const b=bullets[i];
     b.x+=b.vx*dt;b.y+=b.vy*dt;b.life-=dt;
+    if(b.home){
+      let best=null,bd=1e18;
+      for(const e of enemies){const d2=(e.x-b.x)**2+(e.y-b.y)**2;if(d2<bd){bd=d2;best=e;}}
+      if(best){
+        const cur=Math.atan2(b.vy,b.vx);
+        let want=Math.atan2(best.y-b.y,best.x-b.x);
+        let diff=want-cur;
+        while(diff>Math.PI)diff-=TAU;
+        while(diff<-Math.PI)diff+=TAU;
+        const step=b.turn*dt;
+        const na=cur+(diff>0?Math.min(step,diff):Math.max(-step,diff));
+        const sp=Math.hypot(b.vx,b.vy);
+        b.vx=Math.cos(na)*sp;b.vy=Math.sin(na)*sp;
+      }
+    }
     let dead=b.life<=0;
     if(!dead)for(const e of enemies){
       if(dist2(b.x,b.y,e.x,e.y)<=(b.r+e.r)**2){
@@ -563,8 +593,8 @@ function drawFx(){
   for(const b of bullets){
     const x=b.x-cam.x,y=b.y-cam.y;
     ctx.save();ctx.translate(x,y);ctx.rotate(Math.atan2(b.vy,b.vx));
-    ctx.shadowColor="#ffd27a";ctx.shadowBlur=10;
-    ctx.fillStyle="#ffe9b8";
+    ctx.shadowColor=b.sc||"#ffd27a";ctx.shadowBlur=10;
+    ctx.fillStyle=b.fc||"#ffe9b8";
     ctx.beginPath();ctx.ellipse(0,0,8,3.5,0,0,TAU);ctx.fill();
     ctx.restore();
   }
@@ -614,7 +644,7 @@ function drawFx(){
 /* ================= HUD & UI ================= */
 function buildWeaponChips(){
   const box=$("weapons");box.innerHTML="";
-  for(const id of ["garlic","bullet","nova","orbit","storm"]){
+  for(const id of ["garlic","bullet","nova","orbit","storm","dart"]){
     const lv=player.ups[id];
     const d=document.createElement("div");d.className="wchip";
     let pips="";for(let i=0;i<5;i++)pips+=`<div class="pip${i<lv?" on":""}"></div>`;
@@ -695,7 +725,7 @@ function startGame(){
   newState();
   S.mode="playing";
   S.level=1;
-  player.ups={garlic:1,bullet:0,nova:0,orbit:0,storm:0,hp:0,spd:0,dmg:0,rate:0,magnet:0,regen:0,armor:0};
+  player.ups={garlic:1,bullet:0,nova:0,orbit:0,storm:0,dart:0,hp:0,spd:0,dmg:0,rate:0,magnet:0,regen:0,armor:0};
   buildWeaponChips();
   hideScreen();
   $("levelup").classList.add("hidden");
